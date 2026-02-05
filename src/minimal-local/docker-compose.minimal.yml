@@ -1,0 +1,224 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-shield-postgres
+    command: postgres -c max_connections=200 -c shared_buffers=256MB
+    environment:
+      POSTGRES_DB: ai_shield
+      POSTGRES_USER: ai_shield
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_shield"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-shield-network
+    restart: unless-stopped
+
+  # Redis Cache and Message Broker
+  redis:
+    image: redis:7-alpine
+    container_name: ai-shield-redis
+    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ai-shield-network
+    restart: unless-stopped
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: ai-shield-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - ai-shield-network
+    restart: unless-stopped
+
+  # Ollama LLM Runtime
+  # Note: Only needed if using containerized Ollama (CPU-only on macOS)
+  # If using host Ollama (for GPU acceleration), start with: --profile ollama-container
+  # Default: This service is disabled. Enable with --profile ollama-container
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai-shield-ollama
+    profiles:
+      - ollama-container  # Only start if explicitly requested
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    networks:
+      - ai-shield-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '8.0'  # Limit to 8 CPU cores (increased for parallel processing)
+          memory: 8G   # Limit to 8GB RAM (increased for parallel processing and model caching)
+    # Uncomment for GPU support (NVIDIA only, not supported on macOS)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # FastAPI Backend
+  api:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    container_name: ai-shield-api
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ai_shield:${POSTGRES_PASSWORD}@postgres:5432/ai_shield
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-60}
+      CELERY_WORKER_CONCURRENCY: ${CELERY_WORKER_CONCURRENCY:-8}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      PYTHONPATH: /app
+    volumes:
+      - ./backend:/app
+      - ./config:/app/config
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - ai-shield-network
+    restart: unless-stopped
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Celery Worker
+  celery_worker:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    container_name: ai-shield-celery-worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ai_shield:${POSTGRES_PASSWORD}@postgres:5432/ai_shield
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-60}
+      CELERY_WORKER_CONCURRENCY: ${CELERY_WORKER_CONCURRENCY:-8}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      PYTHONPATH: /app
+    volumes:
+      - ./backend:/app
+      - ./config:/app/config
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - ai-shield-network
+    restart: unless-stopped
+    command: celery -A tasks worker --loglevel=info --concurrency=${CELERY_WORKER_CONCURRENCY:-8}
+
+  # Celery Beat Scheduler
+  celery_beat:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    container_name: ai-shield-celery-beat
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ai_shield:${POSTGRES_PASSWORD}@postgres:5432/ai_shield
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      PYTHONPATH: /app
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ai-shield-network
+    restart: unless-stopped
+    command: celery -A tasks beat --loglevel=info
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai-shield-frontend
+    environment:
+      VITE_API_URL: http://localhost:${API_PORT:-8000}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - api
+    networks:
+      - ai-shield-network
+    restart: unless-stopped
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  ollama_data:
+    driver: local
+
+networks:
+  ai-shield-network:
+    driver: bridge

@@ -1,0 +1,29 @@
+# AWS Deployment Profile
+
+This directory will contain the AWS deployment configuration for AI Shield Intelligence.
+
+## Status
+
+🚧 **Work in Progress** - Architecture design complete, implementation not yet started.
+
+## Documentation
+
+- **[aws-design_concept.md](aws-design_concept.md)** - Complete architecture design document including:
+  - Intelligence source catalog (80+ sources)
+  - AWS service architecture diagrams
+  - Component specifications
+  - Security and compliance requirements
+  - Cost estimates and scaling plans
+  - Implementation roadmap
+
+## Planned Features
+
+- Multi-AZ high availability deployment
+- Auto-scaling based on workload
+- Managed AWS services (RDS Aurora, ElastiCache, S3, Bedrock)
+- CloudWatch monitoring and alerting
+- VPC isolation and security groups
+- Infrastructure as Code (Terraform/CDK)
+- Multi-region support for data residency
+- Enterprise-grade security and compliance
+

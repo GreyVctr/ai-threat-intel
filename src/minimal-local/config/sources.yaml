@@ -1,0 +1,215 @@
+# Intelligence Sources Configuration
+# This file defines the external sources for AI threat intelligence collection
+# All sources must be publicly accessible (no authentication required)
+
+sources:
+  # arXiv RSS Feeds - Academic Papers
+  - name: "arXiv Computer Security"
+    type: "rss"
+    url: "http://export.arxiv.org/rss/cs.CR"
+    enabled: true
+    frequency: "daily"
+    description: "Cryptography and Security papers from arXiv"
+    tags:
+      - academic
+      - security
+      - cryptography
+
+  - name: "arXiv Machine Learning"
+    type: "rss"
+    url: "http://export.arxiv.org/rss/cs.LG"
+    enabled: true
+    frequency: "daily"
+    description: "Machine Learning papers from arXiv"
+    tags:
+      - academic
+      - machine-learning
+
+  - name: "arXiv Artificial Intelligence"
+    type: "rss"
+    url: "http://export.arxiv.org/rss/cs.AI"
+    enabled: true
+    frequency: "daily"
+    description: "Artificial Intelligence papers from arXiv"
+    tags:
+      - academic
+      - ai
+
+  - name: "arXiv Statistics ML"
+    type: "rss"
+    url: "http://export.arxiv.org/rss/stat.ML"
+    enabled: true
+    frequency: "daily"
+    description: "Statistics Machine Learning papers from arXiv"
+    tags:
+      - academic
+      - statistics
+      - machine-learning
+
+  # Security Blog RSS Feeds
+  - name: "Google Project Zero"
+    type: "rss"
+    url: "https://googleprojectzero.blogspot.com/feeds/posts/default"
+    enabled: true
+    frequency: "daily"
+    description: "Google's vulnerability research blog"
+    tags:
+      - security
+      - vulnerabilities
+      - research
+
+  - name: "Trail of Bits Blog"
+    type: "rss"
+    url: "https://blog.trailofbits.com/feed/"
+    enabled: true
+    frequency: "daily"
+    description: "Security research and auditing insights"
+    tags:
+      - security
+      - auditing
+      - research
+
+  - name: "NCC Group Research"
+    type: "rss"
+    url: "https://research.nccgroup.com/feed/"
+    enabled: true
+    frequency: "daily"
+    description: "Cybersecurity research and threat intelligence"
+    tags:
+      - security
+      - research
+      - threat-intelligence
+
+  # GitHub Trending API
+  - name: "GitHub Trending Security"
+    type: "api"
+    url: "https://api.github.com/search/repositories?q=topic:security+topic:machine-learning&sort=updated"
+    enabled: true
+    frequency: "daily"
+    description: "Trending security and ML repositories on GitHub"
+    tags:
+      - github
+      - security
+      - machine-learning
+    config:
+      rate_limit: 60  # requests per hour for unauthenticated
+
+  - name: "GitHub Trending AI Security"
+    type: "api"
+    url: "https://api.github.com/search/repositories?q=topic:ai-security+topic:adversarial&sort=updated"
+    enabled: true
+    frequency: "daily"
+    description: "AI security and adversarial ML repositories"
+    tags:
+      - github
+      - ai-security
+      - adversarial
+    config:
+      rate_limit: 60
+
+  # CVE and NVD Data Feeds
+  - name: "NVD Recent CVEs"
+    type: "api"
+    url: "https://services.nvd.nist.gov/rest/json/cves/2.0"
+    enabled: true
+    frequency: "daily"
+    description: "National Vulnerability Database recent CVEs"
+    tags:
+      - cve
+      - vulnerabilities
+      - nvd
+    config:
+      results_per_page: 100
+
+  # Reddit RSS Feeds
+  - name: "Reddit Machine Learning"
+    type: "rss"
+    url: "https://www.reddit.com/r/MachineLearning/.rss"
+    enabled: true
+    frequency: "hourly"
+    description: "Machine Learning subreddit discussions"
+    tags:
+      - reddit
+      - machine-learning
+      - community
+
+  - name: "Reddit Network Security"
+    type: "rss"
+    url: "https://www.reddit.com/r/netsec/.rss"
+    enabled: true
+    frequency: "hourly"
+    description: "Network security subreddit discussions"
+    tags:
+      - reddit
+      - security
+      - community
+
+  # Hacker News API
+  - name: "Hacker News Top Stories"
+    type: "api"
+    url: "https://hacker-news.firebaseio.com/v0/topstories.json"
+    enabled: true
+    frequency: "hourly"
+    description: "Top stories from Hacker News"
+    tags:
+      - hackernews
+      - tech-news
+      - community
+    config:
+      max_items: 50
+
+  # Additional Security Sources
+  - name: "CERT/CC Vulnerability Notes"
+    type: "rss"
+    url: "https://www.kb.cert.org/vuls/atomfeed/"
+    enabled: true
+    frequency: "daily"
+    description: "CERT Coordination Center vulnerability notes"
+    tags:
+      - cert
+      - vulnerabilities
+      - advisories
+
+  - name: "Schneier on Security"
+    type: "rss"
+    url: "https://www.schneier.com/blog/atom.xml"
+    enabled: true
+    frequency: "daily"
+    description: "Bruce Schneier's security blog"
+    tags:
+      - security
+      - analysis
+      - opinion
+
+  # AI/ML Security Specific Sources
+  - name: "OpenAI Research"
+    type: "rss"
+    url: "https://openai.com/blog/rss.xml"
+    enabled: true
+    frequency: "weekly"
+    description: "OpenAI research blog and announcements"
+    tags:
+      - ai
+      - research
+      - openai
+
+  - name: "DeepMind Blog"
+    type: "rss"
+    url: "https://deepmind.google/blog/rss.xml"
+    enabled: true
+    frequency: "weekly"
+    description: "DeepMind research and developments"
+    tags:
+      - ai
+      - research
+      - deepmind
+
+# Configuration Notes:
+# - type: "rss" | "api" | "web_scrape"
+# - frequency: "hourly" | "daily" | "weekly"
+# - enabled: true | false (allows disabling sources without removing them)
+# - tags: List of tags for categorization and filtering
+# - config: Source-specific configuration parameters
+#
+# All sources must be publicly accessible. Sources requiring authentication
+# should be configured with API keys in environment variables, not in this file.
