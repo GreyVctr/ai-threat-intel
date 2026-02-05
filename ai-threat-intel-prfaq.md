@@ -176,7 +176,7 @@ A: Basic information about your AI use cases, frameworks and platforms you use (
 
 ---
 
-## Internal FAQ (Not for External Distribution)
+## Technical and Business Considerations
 
 **Q: What's the business model?**
 
@@ -202,9 +202,9 @@ A: Automated collection pipeline (web scraping, RSS, APIs, GitHub monitoring), M
 
 A: Core team: AI security researchers (analysis), threat intelligence analysts (collection/triage), security engineers (tooling/automation), customer success (onboarding/support). Estimated 8-12 people for initial launch.
 
-**Q: How does this leverage existing code at github.com/schwartz1375/?**
+**Q: How does this leverage existing open source work?**
 
-A: Can build on existing security research, threat detection, and data collection tools. Potential to leverage any ML/AI security projects, automation frameworks, or intelligence gathering scripts already developed.
+A: Builds on existing security research, threat detection, and data collection tools. Leverages ML/AI security projects, automation frameworks, and intelligence gathering capabilities.
 
 **Q: What's the go-to-market strategy?**
 
