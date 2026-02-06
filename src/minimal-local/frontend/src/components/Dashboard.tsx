@@ -12,16 +12,19 @@ export default function Dashboard() {
   const { data: stats } = useQuery({
     queryKey: ['statistics'],
     queryFn: searchApi.statistics,
+    refetchInterval: 15000, // Refresh every 15 seconds to stay in sync with LLM stats
   })
 
   const { data: recentThreats } = useQuery({
     queryKey: ['recent-threats'],
     queryFn: () => searchApi.recent(5),
+    refetchInterval: 15000, // Refresh every 15 seconds to show new threats
   })
 
   const { data: highSeverity } = useQuery({
     queryKey: ['high-severity'],
     queryFn: () => searchApi.highSeverity(8, 5),
+    refetchInterval: 15000, // Refresh every 15 seconds to stay in sync with other stats
   })
 
   const { data: health } = useQuery({

@@ -1104,7 +1104,7 @@ The easiest way to verify collection:
 2. Note the **Total Threats** count
 3. Trigger collection (using command above)
 4. Wait 2-3 minutes
-5. Refresh the Dashboard
+5. Dashboard auto-updates every 15 seconds - watch the **Total Threats** count increase
 6. Check **Recent Threats** section - new threats appear at top with current timestamp
 7. Watch **System Activity → Pipeline** for active tasks
 
