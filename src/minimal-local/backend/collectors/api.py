@@ -152,7 +152,7 @@ class ArxivAPICollector(Collector):
         return CollectorResult(
             title=title,
             description=summary,
-            content=summary,  # For arXiv, content is the abstract
+            content="Abstract only. View full paper via source link.",
             url=url,
             authors=authors,
             published_at=published_at,

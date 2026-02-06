@@ -89,17 +89,15 @@ class RSSCollector(Collector):
         description = entry.get("summary", entry.get("description", ""))
         description = sanitize_text(clean_html_entities(description)) if description else ""
         
-        # Extract content (prefer content over summary)
+        # Extract content (only use actual content field, not summary fallback)
         content = ""
         if hasattr(entry, "content") and entry.content:
             # Some feeds have multiple content entries
             content = " ".join([c.get("value", "") for c in entry.content])
-        elif entry.get("summary"):
-            content = entry.get("summary")
-        elif entry.get("description"):
-            content = entry.get("description")
-        
-        content = sanitize_text(clean_html_entities(content)) if content else ""
+            content = sanitize_text(clean_html_entities(content)) if content else ""
+        else:
+            # No content field available - use helpful message instead of duplicating description
+            content = "Summary only. View full article via source link."
         
         # Extract URL
         url = entry.get("link", "")
