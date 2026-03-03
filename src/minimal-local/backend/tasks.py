@@ -299,6 +299,13 @@ def scheduled_source_fetch(self) -> dict:
     This task is triggered by Celery Beat on a schedule (hourly by default).
     It fetches from all enabled sources and queues individual fetch tasks.
     
+    Manages collection state in Redis:
+    - Updates collection:last_run at task start
+    - Sets collection:last_status to "running" at start
+    - Sets collection:last_status to "success" on completion
+    - Sets collection:last_status to "failed" on error
+    - Releases collection lock in all cases
+    
     Returns:
         Dictionary with fetch results:
         {
@@ -308,53 +315,89 @@ def scheduled_source_fetch(self) -> dict:
             'errors': list
         }
     """
+    import asyncio
+    from datetime import datetime
     from services.source_manager import get_source_manager
+    from services.collection_state import get_collection_state_manager
     
     logger.info("Starting scheduled source fetch")
     
-    try:
-        # Load source configuration
-        source_manager = get_source_manager()
-        enabled_sources = source_manager.get_enabled_sources()
+    # Main async function to handle all async operations in a single event loop
+    async def run_collection():
+        state_manager = get_collection_state_manager()
         
-        logger.info(f"Found {len(enabled_sources)} enabled sources")
-        
-        queued = 0
-        skipped = 0
-        errors = []
-        
-        for source in enabled_sources:
+        try:
+            # Update collection state at task start
+            await state_manager.set_last_run(datetime.utcnow())
+            await state_manager.set_last_status("running")
+            logger.info("Updated collection state to running")
+            
+            # Load source configuration (sync operation)
+            source_manager = get_source_manager()
+            enabled_sources = source_manager.get_enabled_sources()
+            
+            logger.info(f"Found {len(enabled_sources)} enabled sources")
+            
+            queued = 0
+            skipped = 0
+            errors = []
+            
+            for source in enabled_sources:
+                try:
+                    # Queue fetch task for each enabled source
+                    fetch_source.delay(source.name)
+                    queued += 1
+                    logger.info(f"Queued fetch task for source: {source.name}")
+                    
+                except Exception as e:
+                    error_msg = f"Failed to queue fetch task for {source.name}: {str(e)}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+                    skipped += 1
+            
+            logger.info(f"Scheduled source fetch complete: {queued} queued, {skipped} skipped")
+            
+            # Update status to success on completion
+            await state_manager.set_last_status("success")
+            logger.info("Updated collection state to success")
+            
+            # Release lock
+            await state_manager.release_lock()
+            
+            return {
+                'status': 'success' if not errors else 'partial',
+                'sources_queued': queued,
+                'sources_skipped': skipped,
+                'errors': errors
+            }
+            
+        except Exception as e:
+            error_msg = f"Error in scheduled source fetch: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            
             try:
-                # Queue fetch task for each enabled source
-                fetch_source.delay(source.name)
-                queued += 1
-                logger.info(f"Queued fetch task for source: {source.name}")
-                
-            except Exception as e:
-                error_msg = f"Failed to queue fetch task for {source.name}: {str(e)}"
-                logger.error(error_msg)
-                errors.append(error_msg)
-                skipped += 1
-        
-        logger.info(f"Scheduled source fetch complete: {queued} queued, {skipped} skipped")
-        
-        return {
-            'status': 'success' if not errors else 'partial',
-            'sources_queued': queued,
-            'sources_skipped': skipped,
-            'errors': errors
-        }
-        
-    except Exception as e:
-        error_msg = f"Error in scheduled source fetch: {str(e)}"
-        logger.error(error_msg, exc_info=True)
-        
-        return {
-            'status': 'error',
-            'sources_queued': 0,
-            'sources_skipped': 0,
-            'errors': [error_msg]
-        }
+                # Update status to failed on error
+                await state_manager.set_last_status("failed")
+                logger.info("Updated collection state to failed")
+            except Exception as state_error:
+                logger.error(f"Failed to update collection state to failed: {state_error}")
+            
+            finally:
+                try:
+                    # Release lock in finally block to ensure it's always released
+                    await state_manager.release_lock()
+                except Exception as lock_error:
+                    logger.error(f"Failed to release collection lock: {lock_error}")
+            
+            return {
+                'status': 'error',
+                'sources_queued': 0,
+                'sources_skipped': 0,
+                'errors': [error_msg]
+            }
+    
+    # Run the async function in a single event loop
+    return asyncio.run(run_collection())
 
 
 # ============================================================================

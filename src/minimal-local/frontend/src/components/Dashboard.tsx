@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, TrendingUp, Database, Activity, Clock, Zap, BarChart3, RefreshCw, AlertCircle, CheckCircle, XCircle, HelpCircle } from 'lucide-react'
 import { searchApi, healthApi, systemApi } from '../services/api'
 import { useState } from 'react'
+import Toast, { ToastType } from './Toast'
 
 export default function Dashboard() {
   const queryClient = useQueryClient()
   const [retryLimit, setRetryLimit] = useState(100)
   const [showThreatTypeModal, setShowThreatTypeModal] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null)
   
   const { data: stats } = useQuery({
     queryKey: ['statistics'],
@@ -61,6 +63,24 @@ export default function Dashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['llm-analysis-stats'] })
       queryClient.invalidateQueries({ queryKey: ['system-status'] })
+    },
+  })
+
+  const collectNowMutation = useMutation({
+    mutationFn: () => systemApi.collectNow(),
+    onSuccess: () => {
+      setToast({ message: 'Collection started successfully', type: 'success' })
+      queryClient.invalidateQueries({ queryKey: ['system-status'] })
+    },
+    onError: (error: any) => {
+      const status = error.response?.status
+      const message = error.response?.data?.message || error.message
+      
+      if (status === 409) {
+        setToast({ message: 'Collection already in progress', type: 'warning' })
+      } else {
+        setToast({ message: `Failed to start collection: ${message}`, type: 'error' })
+      }
     },
   })
 
@@ -196,10 +216,43 @@ export default function Dashboard() {
       {/* Enhanced System Status */}
       {systemStatus && (
         <div className="bg-white dark:bg-gray-800 shadow rounded-lg">
-          <div className="px-4 py-5 sm:px-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="px-4 py-5 sm:px-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-gray-100">
               System Activity
             </h3>
+            <div className="flex items-center gap-4">
+              {/* Collection Status Indicator */}
+              {systemStatus.collection?.status === 'running' && (
+                <div className="flex items-center text-sm text-blue-600 dark:text-blue-400">
+                  <Activity className="animate-pulse h-4 w-4 mr-2" />
+                  Collection in Progress
+                </div>
+              )}
+              {systemStatus.collection?.status === 'overdue' && (
+                <div className="flex items-center text-sm text-red-600 dark:text-red-400">
+                  <AlertCircle className="h-4 w-4 mr-2" />
+                  Next Collection: Overdue
+                </div>
+              )}
+              {/* Collect Now Button */}
+              <button
+                onClick={() => collectNowMutation.mutate()}
+                disabled={collectNowMutation.isPending || systemStatus.collection?.status === 'running'}
+                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              >
+                {collectNowMutation.isPending ? (
+                  <>
+                    <RefreshCw className="animate-spin h-4 w-4 mr-2" />
+                    Collecting...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="h-4 w-4 mr-2" />
+                    Collect Now
+                  </>
+                )}
+              </button>
+            </div>
           </div>
           <div className="px-4 py-5 sm:p-6">
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -672,6 +725,15 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
       )}
     </div>
   )

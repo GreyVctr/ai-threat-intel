@@ -7,9 +7,9 @@ queue status, worker health, and collection schedules.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +31,14 @@ class TaskInfo(BaseModel):
     eta: Optional[datetime] = None
 
 
+class CollectNowResponse(BaseModel):
+    """Response model for manual collection trigger"""
+    status: Literal["success", "conflict", "error"]
+    message: str
+    task_id: Optional[str] = None
+    queued_at: Optional[datetime] = None
+
+
 class PipelineStatus(BaseModel):
     """Pipeline activity status"""
     active_tasks: List[TaskInfo]
@@ -45,6 +53,7 @@ class CollectionSchedule(BaseModel):
     last_run: Optional[datetime]
     frequency: str
     enabled_sources: int
+    status: Literal["idle", "running", "overdue"]
 
 
 class SystemStatusResponse(BaseModel):
@@ -98,6 +107,80 @@ async def get_system_status(
         services=service_health,
         performance=performance_metrics
     )
+
+
+@router.post("/collect-now", response_model=CollectNowResponse)
+async def collect_now(
+    current_user: User = Depends(get_current_admin_user)
+):
+    """
+    Manually trigger a collection task (Admin only)
+    
+    Queues a scheduled_source_fetch task to collect threat intelligence
+    from all enabled sources. Uses Redis locking to prevent concurrent
+    collections.
+    
+    Returns:
+        CollectNowResponse with task ID and status
+        
+    Raises:
+        HTTPException 409: Collection already in progress
+        HTTPException 500: Failed to queue collection task
+    """
+    from services.collection_state import get_collection_state_manager
+    from tasks import scheduled_source_fetch
+    
+    logger.info(f"Manual collection trigger requested by user {current_user.username}")
+    
+    state_manager = get_collection_state_manager()
+    
+    try:
+        # Attempt to acquire Redis lock
+        lock_acquired = await state_manager.acquire_lock()
+        
+        if not lock_acquired:
+            logger.warning("Collection already in progress, rejecting manual trigger")
+            return CollectNowResponse(
+                status="conflict",
+                message="Collection already in progress"
+            )
+        
+        # Queue the collection task
+        try:
+            task = scheduled_source_fetch.delay()
+            queued_at = datetime.utcnow()
+            
+            # Update collection state
+            await state_manager.set_last_run(queued_at)
+            await state_manager.set_last_status("running")
+            
+            logger.info(f"Manual collection queued successfully: task_id={task.id}, queued_at={queued_at}")
+            
+            return CollectNowResponse(
+                status="success",
+                message="Collection queued successfully",
+                task_id=task.id,
+                queued_at=queued_at
+            )
+            
+        except Exception as celery_error:
+            # Release lock if task queueing failed
+            await state_manager.release_lock()
+            logger.error(f"Failed to queue collection task: {celery_error}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to queue collection task: {str(celery_error)}"
+            )
+            
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as redis_error:
+        logger.error(f"Redis operation failed during manual collection trigger: {redis_error}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Collection service unavailable: {str(redis_error)}"
+        )
 
 
 async def _get_pipeline_status() -> PipelineStatus:
@@ -187,27 +270,43 @@ async def _get_collection_schedule(db: AsyncSession) -> CollectionSchedule:
                     # Calculate interval between hours
                     interval = hours_list[1] - hours_list[0]
                     frequency = f"every {interval} hours"
-                    if last_run:
-                        next_run = last_run + timedelta(hours=interval)
+                    
+                    # Calculate next run based on fixed schedule times, not last_run
+                    # This ensures manual collections don't reset the timer
+                    now = datetime.utcnow()
+                    for hour in hours_list:
+                        candidate = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+                        if candidate > now:
+                            next_run = candidate
+                            break
+                    
+                    # If no future time today, use first time tomorrow
+                    if not next_run:
+                        next_run = (now + timedelta(days=1)).replace(
+                            hour=hours_list[0], minute=0, second=0, microsecond=0
+                        )
                 else:
                     frequency = "daily"
-                    if last_run:
-                        next_run = last_run + timedelta(days=1)
+                    now = datetime.utcnow()
+                    hour = list(schedule_info.hour)[0] if isinstance(schedule_info.hour, set) else schedule_info.hour
+                    next_run = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+                    if next_run <= now:
+                        next_run += timedelta(days=1)
             elif schedule_info.hour == '*':
                 frequency = "hourly"
-                if last_run:
-                    next_run = last_run + timedelta(hours=1)
+                now = datetime.utcnow()
+                next_run = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
             else:
                 frequency = "custom"
-                if last_run:
-                    next_run = last_run + timedelta(hours=1)
+                now = datetime.utcnow()
+                next_run = now + timedelta(hours=1)
         else:
             # Fallback to default
             frequency = "every 6 hours"
-            if last_run:
-                next_run = last_run + timedelta(hours=6)
+            now = datetime.utcnow()
+            next_run = now + timedelta(hours=6)
         
-        # If no last run, estimate next run
+        # If no next run calculated, estimate based on frequency
         if not next_run:
             if "every" in frequency and "hours" in frequency:
                 hours = int(frequency.split()[1])
@@ -220,11 +319,35 @@ async def _get_collection_schedule(db: AsyncSession) -> CollectionSchedule:
         manager = get_source_manager()
         enabled_sources = len(manager.get_enabled_sources())
         
+        # Calculate collection status based on collection:last_status and collection:lock
+        from services.collection_state import get_collection_state_manager
+        state_manager = get_collection_state_manager()
+        
+        collection_status = "idle"  # Default status
+        try:
+            last_status = await state_manager.get_last_status()
+            
+            # Check if collection is currently running (lock exists or status is "running")
+            if last_status == "running":
+                collection_status = "running"
+            else:
+                # Check if collection is overdue (>12 hours since last run)
+                is_overdue = await state_manager.is_overdue(threshold_hours=12)
+                if is_overdue:
+                    collection_status = "overdue"
+                else:
+                    collection_status = "idle"
+        except Exception as status_error:
+            logger.warning(f"Failed to get collection status from Redis: {status_error}")
+            # Default to idle if we can't determine status
+            collection_status = "idle"
+        
         return CollectionSchedule(
             next_run=next_run,
             last_run=last_run,
             frequency=frequency,
-            enabled_sources=enabled_sources
+            enabled_sources=enabled_sources,
+            status=collection_status
         )
     
     except Exception as e:
@@ -233,7 +356,8 @@ async def _get_collection_schedule(db: AsyncSession) -> CollectionSchedule:
             next_run=None,
             last_run=None,
             frequency="unknown",
-            enabled_sources=0
+            enabled_sources=0,
+            status="idle"
         )
 
 

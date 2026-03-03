@@ -23,6 +23,68 @@ setup_logging(
 logger = get_logger(__name__)
 
 
+async def check_and_trigger_catchup() -> None:
+    """
+    Check for overdue collections and trigger catch-up if needed.
+    
+    This function:
+    1. Connects to Redis using CollectionStateManager
+    2. Retrieves collection:last_run timestamp
+    3. Calculates elapsed time since last run
+    4. If elapsed > 12 hours: logs overdue detection, queues scheduled_source_fetch task, updates collection:last_run
+    5. Handles Redis connection errors gracefully (logs warning, continues startup)
+    
+    Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3
+    """
+    from datetime import datetime
+    from services.collection_state import get_collection_state_manager
+    from tasks import scheduled_source_fetch
+    
+    logger.info("Checking for overdue collections")
+    
+    try:
+        # Get collection state manager
+        state_manager = get_collection_state_manager()
+        
+        # Check if collection is overdue (>12 hours)
+        is_overdue = await state_manager.is_overdue(threshold_hours=12)
+        
+        if is_overdue:
+            # Get last run timestamp for logging
+            last_run = await state_manager.get_last_run()
+            
+            if last_run:
+                elapsed = datetime.utcnow() - last_run
+                elapsed_hours = elapsed.total_seconds() / 3600
+                log_with_context(
+                    logger, "warning", "Overdue collection detected",
+                    last_run=last_run.isoformat(),
+                    elapsed_hours=round(elapsed_hours, 2)
+                )
+            else:
+                logger.warning("No previous collection found, triggering initial collection")
+            
+            # Queue catch-up collection task
+            try:
+                task = scheduled_source_fetch.delay()
+                logger.info(f"Queued catch-up collection task: {task.id}")
+                
+                # Update last_run timestamp to prevent duplicate catch-ups
+                await state_manager.set_last_run(datetime.utcnow())
+                logger.info("Updated collection:last_run timestamp")
+                
+            except Exception as e:
+                logger.error(f"Failed to queue catch-up collection task: {e}", exc_info=True)
+        else:
+            logger.info("Collection is not overdue, no catch-up needed")
+    
+    except Exception as e:
+        # Handle Redis connection errors gracefully
+        logger.warning(f"Failed to check for overdue collections: {e}")
+        logger.warning("Continuing startup without catch-up check")
+        # Don't raise - allow startup to continue
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """
@@ -41,6 +103,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     source_manager = get_source_manager()
     source_manager.start_watching()
     logger.info("Source configuration file watcher started")
+    
+    # Check for overdue collections and trigger catch-up if needed
+    await check_and_trigger_catchup()
     
     yield
     

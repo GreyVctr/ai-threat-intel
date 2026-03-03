@@ -168,6 +168,10 @@ export const systemApi = {
     const response = await api.get('/api/v1/system/threat-type-info')
     return response.data
   },
+  collectNow: async () => {
+    const response = await api.post('/api/v1/system/collect-now')
+    return response.data
+  },
 }
 
 export default api
