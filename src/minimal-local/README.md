@@ -631,19 +631,27 @@ beat_schedule={
 
 **Manual Trigger (Fetch Immediately Without Waiting):**
 
+You can trigger collection manually in two ways:
+
+**Option 1: Using the Dashboard UI (Recommended)**
+1. Open the Dashboard at http://localhost:3000
+2. Click the "Collect Now" button in the System Activity section
+3. The button will be disabled (greyed out) while collection is running
+4. You'll see a toast notification when collection starts or if it's already in progress
+
+**Option 2: Using CLI Commands**
 ```bash
-# Option 1: Using Celery call command (recommended)
+# Using Celery call command
 docker compose -f docker-compose.minimal.yml exec celery_worker celery -A tasks call tasks.scheduled_source_fetch
 
-# Option 2: Using Python directly
+# Using Python directly
 docker compose -f docker-compose.minimal.yml exec celery_worker python -c "from tasks import scheduled_source_fetch; scheduled_source_fetch.delay()"
-
-# Option 3: From backend container
-docker compose -f docker-compose.minimal.yml exec backend python -c "from tasks import scheduled_source_fetch; scheduled_source_fetch.delay()"
 
 # Fetch specific source
 docker compose -f docker-compose.minimal.yml exec celery_worker celery -A tasks call tasks.fetch_source --args='["arXiv Computer Security"]'
 ```
+
+**Important**: Manual collections do NOT reset the scheduled collection time. The next automatic collection will still run at the fixed schedule times (12:00 AM and 12:00 PM UTC). This ensures predictable collection intervals regardless of manual triggers.
 
 **Check When Next Fetch Will Run:**
 
@@ -1045,18 +1053,27 @@ The system automatically fetches threat intelligence from configured sources **e
 5. Each item is queued for ingestion
 
 **Manual Trigger** (fetch immediately without waiting):
+
+You can trigger collection manually using the Dashboard UI or CLI commands:
+
+**Option 1: Using the Dashboard UI (Recommended)**
+- Open http://localhost:3000 and click the "Collect Now" button
+- The button will be disabled while collection is running
+- You'll see a toast notification confirming the collection started
+
+**Option 2: Using CLI Commands**
 ```bash
-# Option 1: Using Celery call command (recommended)
+# Using Celery call command
 docker compose -f docker-compose.minimal.yml exec celery_worker celery -A tasks call tasks.scheduled_source_fetch
 
-# Option 2: Using Python directly
+# Using Python directly
 docker compose -f docker-compose.minimal.yml exec celery_worker python -c "from tasks import scheduled_source_fetch; scheduled_source_fetch.delay()"
 
 # Fetch specific source
 docker compose -f docker-compose.minimal.yml exec celery_worker celery -A tasks call tasks.fetch_source --args='["arXiv Computer Security"]'
 ```
 
-**Note**: Manual triggers do NOT reset the scheduled collection time. The next automatic collection will still run at the scheduled interval (every 12 hours at 12:00 AM and 12:00 PM).
+**Note**: Manual triggers do NOT reset the scheduled collection time. The next automatic collection will still run at the fixed schedule times (12:00 AM and 12:00 PM UTC), ensuring predictable collection intervals.
 
 ### Verifying Data Collection
 
