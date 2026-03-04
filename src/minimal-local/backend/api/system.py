@@ -54,6 +54,11 @@ class CollectionSchedule(BaseModel):
     frequency: str
     enabled_sources: int
     status: Literal["idle", "running", "overdue"]
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat() + 'Z' if v and not v.tzinfo else v.isoformat() if v else None
+        }
 
 
 class SystemStatusResponse(BaseModel):
