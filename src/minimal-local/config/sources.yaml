@@ -213,3 +213,51 @@ sources:
 #
 # All sources must be publicly accessible. Sources requiring authentication
 # should be configured with API keys in environment variables, not in this file.
+
+  # AI Security News - High Velocity Sources (Added 2026-03-04)
+  - name: "SecurityWeek AI Security"
+    type: "rss"
+    url: "https://www.securityweek.com/topics/ai-security/feed/"
+    enabled: true
+    frequency: "daily"
+    description: "Real-time AI security news, vulnerabilities, and threat intelligence"
+    tags:
+      - ai-security
+      - news
+      - vulnerabilities
+      - real-time
+
+  - name: "SecurityWeek Artificial Intelligence"
+    type: "rss"
+    url: "https://www.securityweek.com/category/artificial-intelligence/feed/"
+    enabled: true
+    frequency: "daily"
+    description: "AI security governance, policy, and emerging threats"
+    tags:
+      - ai-security
+      - governance
+      - policy
+      - news
+
+  - name: "CrowdStrike Blog"
+    type: "rss"
+    url: "https://www.crowdstrike.com/blog/feed"
+    enabled: true
+    frequency: "daily"
+    description: "Threat intelligence on AI-powered attacks, APTs, and ransomware"
+    tags:
+      - threat-intelligence
+      - apt
+      - ransomware
+      - ai-attacks
+
+  - name: "Cyber Insider AI"
+    type: "rss"
+    url: "https://cyberinsider.com/ai/feed/"
+    enabled: true
+    frequency: "daily"
+    description: "AI cybersecurity news and analysis"
+    tags:
+      - ai-security
+      - news
+      - analysis

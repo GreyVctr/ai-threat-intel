@@ -216,11 +216,18 @@ Focus on AI/ML security aspects such as adversarial attacks, model extraction, d
         existing_analysis = await self.db.execute(
             select(LLMAnalysis).where(LLMAnalysis.threat_id == threat_id)
         )
-        if existing_analysis.scalar_one_or_none():
-            logger.info(f"Analysis already exists for threat {threat_id}, skipping")
+        existing = existing_analysis.scalar_one_or_none()
+        if existing:
+            logger.info(f"Analysis already exists for threat {threat_id}, ensuring status is updated")
+            # Ensure threat status is marked as complete
+            if threat.llm_analysis_status != 'complete':
+                threat.llm_analysis_status = 'complete'
+                await self.db.commit()
+                logger.info(f"Updated threat {threat_id} status to complete")
             return {
                 'success': True,
                 'threat_id': threat_id,
+                'analysis_id': str(existing.id),
                 'message': 'Analysis already exists'
             }
         
