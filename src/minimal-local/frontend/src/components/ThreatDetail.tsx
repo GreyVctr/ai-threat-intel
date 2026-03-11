@@ -1,16 +1,86 @@
 import { useQuery } from '@tanstack/react-query'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Share2, Mail, Copy, Check } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
 import { threatsApi } from '../services/api'
 
 export default function ThreatDetail() {
   const { id } = useParams<{ id: string }>()
+  const [showShareMenu, setShowShareMenu] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const shareMenuRef = useRef<HTMLDivElement>(null)
   
   const { data: threat, isLoading } = useQuery({
     queryKey: ['threat', id],
     queryFn: () => threatsApi.get(id!),
     enabled: !!id,
   })
+
+  // Close share menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (shareMenuRef.current && !shareMenuRef.current.contains(event.target as Node)) {
+        setShowShareMenu(false)
+      }
+    }
+
+    if (showShareMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showShareMenu])
+
+  const handleCopyToClipboard = () => {
+    if (!threat) return
+    
+    const shareText = `${threat.title}
+
+${threat.llm_analysis?.summary || threat.description || 'No summary available'}
+
+Source: ${threat.source_url || window.location.href}`
+    
+    navigator.clipboard.writeText(shareText).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  const handleEmailShare = () => {
+    if (!threat) return
+    
+    const subject = encodeURIComponent(`AI Threat: ${threat.title}`)
+    const body = encodeURIComponent(`${threat.title}
+
+${threat.llm_analysis?.summary || threat.description || 'No summary available'}
+
+Source: ${threat.source_url || window.location.href}
+
+View full details: ${window.location.href}`)
+    
+    window.location.href = `mailto:?subject=${subject}&body=${body}`
+  }
+
+  const handleMessageShare = () => {
+    if (!threat) return
+    
+    const shareText = encodeURIComponent(`${threat.title}
+
+${threat.llm_analysis?.summary || threat.description || 'No summary available'}
+
+Source: ${threat.source_url || window.location.href}`)
+    
+    window.location.href = `sms:&body=${shareText}`
+  }
+
+  const handleCopyUrl = () => {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
   if (isLoading) {
     return <div className="text-center py-12 text-gray-900 dark:text-gray-100">Loading...</div>
@@ -29,16 +99,79 @@ export default function ThreatDetail() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex items-center justify-between">
         <Link
           to="/threats"
-          className="inline-flex items-center text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 mb-4"
+          className="inline-flex items-center text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
         >
           <ArrowLeft size={16} className="mr-1" />
           Back to threats
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{threat.title}</h1>
+        
+        {/* Share Button */}
+        <div className="relative" ref={shareMenuRef}>
+          <button
+            onClick={() => setShowShareMenu(!showShareMenu)}
+            className="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            <Share2 size={16} className="mr-2" />
+            Share
+          </button>
+          
+          {/* Share Menu Dropdown */}
+          {showShareMenu && (
+            <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white dark:bg-gray-700 ring-1 ring-black ring-opacity-5 z-10">
+              <div className="py-1" role="menu">
+                <button
+                  onClick={() => {
+                    handleCopyToClipboard()
+                    setShowShareMenu(false)
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center"
+                >
+                  {copied ? <Check size={16} className="mr-3" /> : <Copy size={16} className="mr-3" />}
+                  {copied ? 'Copied!' : 'Copy Summary & URL'}
+                </button>
+                <button
+                  onClick={() => {
+                    handleCopyUrl()
+                    setShowShareMenu(false)
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center"
+                >
+                  {copied ? <Check size={16} className="mr-3" /> : <Copy size={16} className="mr-3" />}
+                  {copied ? 'Copied!' : 'Copy Page URL'}
+                </button>
+                <button
+                  onClick={() => {
+                    handleEmailShare()
+                    setShowShareMenu(false)
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center"
+                >
+                  <Mail size={16} className="mr-3" />
+                  Share via Email
+                </button>
+                <button
+                  onClick={() => {
+                    handleMessageShare()
+                    setShowShareMenu(false)
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center"
+                >
+                  <svg className="w-4 h-4 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+                    <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+                  </svg>
+                  Share via iMessage/SMS
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+      
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{threat.title}</h1>
 
       <div className="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200 dark:border-gray-700">
