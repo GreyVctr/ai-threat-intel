@@ -261,3 +261,15 @@ sources:
       - ai-security
       - news
       - analysis
+
+  - name: "Unit 42 Threat Research"
+    type: "rss"
+    url: "https://unit42.paloaltonetworks.com/feed/"
+    enabled: true
+    frequency: "daily"
+    description: "Palo Alto Networks Unit 42 threat intelligence and research"
+    tags:
+      - threat-intelligence
+      - research
+      - apt
+      - malware

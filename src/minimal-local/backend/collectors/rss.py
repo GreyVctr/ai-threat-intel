@@ -95,9 +95,9 @@ class RSSCollector(Collector):
             # Some feeds have multiple content entries
             content = " ".join([c.get("value", "") for c in entry.content])
             content = sanitize_text(clean_html_entities(content)) if content else ""
-        else:
-            # No content field available - use helpful message instead of duplicating description
-            content = "Summary only. View full article via source link."
+        
+        # If no content field, leave empty - ingestion will use description for hashing
+        # This prevents all articles without content from hashing to the same value
         
         # Extract URL
         url = entry.get("link", "")

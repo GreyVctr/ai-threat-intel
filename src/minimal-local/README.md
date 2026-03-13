@@ -707,7 +707,7 @@ When viewing threat details (e.g., `http://localhost:3000/threats/{id}`), you'll
 - **Description**: A brief summary or abstract (typically from RSS feed's `<description>` or `<summary>` tag)
 - **Content**: The full article text (from RSS feed's `<content>` tag or scraped from the source URL)
   - Note: For arXiv papers, only the abstract is available. The content field will indicate "Abstract only. View full paper via source link."
-  - Note: Some RSS feeds only provide summaries without full content. In these cases, the content field will indicate "Summary only. View full article via source link."
+  - Note: Some RSS feeds only provide summaries without full content. In these cases, the content field will be empty, and the description is used for deduplication.
 - **Source**: The intelligence source name (e.g., "arXiv Computer Security", "Hugging Face Blog")
 - **Published At**: When the article was originally published
 - **Threat Type**: Classification result (e.g., "adversarial", "prompt_injection", "data_poisoning")
