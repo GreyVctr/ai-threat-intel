@@ -318,13 +318,15 @@ def scheduled_source_fetch(self) -> dict:
     import asyncio
     from datetime import datetime
     from services.source_manager import get_source_manager
-    from services.collection_state import get_collection_state_manager
+    from services.collection_state import CollectionStateManager
     
     logger.info("Starting scheduled source fetch")
     
     # Main async function to handle all async operations in a single event loop
     async def run_collection():
-        state_manager = get_collection_state_manager()
+        # Create a fresh instance each time to avoid stale event loop references
+        # (asyncio.run() closes the loop, invalidating cached Redis clients)
+        state_manager = CollectionStateManager()
         
         try:
             # Update collection state at task start
@@ -395,6 +397,8 @@ def scheduled_source_fetch(self) -> dict:
                 'sources_skipped': 0,
                 'errors': [error_msg]
             }
+        finally:
+            await state_manager.close()
     
     # Run the async function in a single event loop
     return asyncio.run(run_collection())
