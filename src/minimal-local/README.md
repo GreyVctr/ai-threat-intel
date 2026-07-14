@@ -207,6 +207,76 @@ Skip this step if using host Ollama. See step 5 below.
 docker compose -f docker-compose.minimal.yml --env-file .env.minimal --profile ollama-container up -d
 ```
 
+#### Tuning `OLLAMA_NUM_PARALLEL` (host Ollama parallelism)
+
+By default, host Ollama processes **one request at a time** — all 12 Celery workers
+queue behind a single inference slot. Setting `OLLAMA_NUM_PARALLEL` lets Ollama serve
+multiple requests concurrently, which roughly **1.5-2.5x** throughput on Apple Silicon.
+
+This is a **host** environment variable, not a `.env.minimal` setting — it configures
+the Ollama app on your Mac, not the containers.
+
+**Set it** (Ollama.app reads env vars from launchd, not your shell):
+```bash
+launchctl setenv OLLAMA_NUM_PARALLEL 4
+# Then quit and reopen Ollama.app (a running instance won't pick up the change)
+```
+
+If you run `ollama serve` in a terminal instead of the app, set it in the shell:
+```bash
+OLLAMA_NUM_PARALLEL=4 ollama serve
+```
+
+**Verify** (after sending any request so the model loads):
+```bash
+ps aux | grep llama-server   # look for "-np 4" in the command line
+```
+
+**Choosing the value**: each parallel slot needs its own KV cache. For `qwen2.5:7b`
+at its default 32k context that's ~1.9 GB per slot on top of the ~6.5 GB base model
+(measured: 6.5 GB at 1 slot, 12.1 GB at 4 slots). Leave headroom for the Docker VM
+(~8 GB) and macOS itself.
+
+| Mac unified RAM | `OLLAMA_NUM_PARALLEL` | Approx. Ollama memory (qwen2.5:7b) |
+|-----------------|-----------------------|-------------------------------------|
+| 16 GB           | 1 (leave default)     | ~6.5 GB — no headroom for more      |
+| 24 GB           | 2                     | ~8.5 GB                             |
+| 32-36 GB        | 4                     | ~12 GB                              |
+| 48 GB+          | 4-8                   | ~12-20 GB                           |
+
+Going past 4 rarely helps: token generation on Apple Silicon is memory-bandwidth-bound,
+so parallel slots share the same bandwidth and per-request latency grows. Keep
+`CELERY_WORKER_CONCURRENCY` at roughly 2-3x the slot count so the queue stays full
+(12 workers / 4 slots is a good ratio). If individual requests start approaching
+`OLLAMA_TIMEOUT` (180s), drop back to 2.
+
+**⚠️ Does not survive reboot**: `launchctl setenv` lasts only until logout/reboot.
+After a reboot, re-run the `setenv` command and restart Ollama.app, or install a
+LaunchAgent to apply it at every login:
+
+```bash
+cat > ~/Library/LaunchAgents/com.user.ollama-env.plist <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.ollama-env</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/launchctl</string>
+        <string>setenv</string>
+        <string>OLLAMA_NUM_PARALLEL</string>
+        <string>4</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
+EOF
+launchctl load ~/Library/LaunchAgents/com.user.ollama-env.plist
+```
+
 ### 6. Access Services
 
 Once all services are healthy, access the system at:

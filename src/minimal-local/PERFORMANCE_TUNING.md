@@ -37,7 +37,10 @@ command: celery -A tasks worker --loglevel=info --concurrency=12
 **Why these settings?**
 - **12 workers**: Maximizes throughput with GPU acceleration
 - **180s timeout**: Accounts for queuing when multiple workers hit Ollama simultaneously
-- GPU processes requests sequentially, so higher concurrency = more queuing
+- By default Ollama processes requests sequentially (`OLLAMA_NUM_PARALLEL=1`), so the
+  workers mainly keep its queue full. Raising `OLLAMA_NUM_PARALLEL` on the host to 4
+  serves requests concurrently and roughly doubles throughput — see "Tuning
+  `OLLAMA_NUM_PARALLEL`" in README.md for setup and a sizing table.
 
 ### 2. Host Ollama CPU-only
 
